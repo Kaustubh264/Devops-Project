@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShopKart</title>
+<style>
+*{box-sizing:border-box;margin:0;font-family:system-ui,sans-serif}
+body{background:#f4f6f8;color:#222}
+header{background:#131921;color:#fff;padding:12px 20px;display:flex;gap:10px;align-items:center;position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font-size:22px;color:#ffb400}
+header input{flex:1;min-width:140px;padding:10px;border-radius:6px;border:0}
+button{background:#ffb400;border:0;padding:9px 14px;border-radius:6px;font-weight:600;cursor:pointer}
+button:disabled{background:#ccc;cursor:not-allowed}
+.grey{background:#e5e7eb}
+.chips{padding:14px 20px;display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:6px 14px;border-radius:20px;background:#fff;border:1px solid #ddd;cursor:pointer}
+.chip.active{background:#131921;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;padding:0 20px 24px}
+.card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.card img{width:100%;height:170px;object-fit:cover;background:#e5e7eb}
+.body{padding:12px;display:flex;flex-direction:column;gap:6px;flex:1}
+.body button{margin-top:auto}
+.price{font-size:20px;font-weight:700}
+.muted{color:#666;font-size:13px}
+#cart{position:fixed;right:0;top:0;height:100%;width:340px;max-width:100%;background:#fff;box-shadow:-2px 0 10px rgba(0,0,0,.25);transform:translateX(100%);transition:.25s;padding:16px;display:flex;flex-direction:column;gap:10px;z-index:10}
+#cart.open{transform:none}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee}
+.total{font-size:18px;font-weight:700}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;align-items:center;justify-content:center;padding:16px}
+.modal.show{display:flex}
+.box{background:#fff;border-radius:10px;padding:20px;width:380px;max-width:100%;max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.box input{padding:10px;border:1px solid #ccc;border-radius:6px}
+.err{color:#c00;font-size:13px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#131921;color:#fff;padding:10px 18px;border-radius:8px;display:none;z-index:30}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛒 ShopKart</h1>
+  <input id="q" placeholder="Search products...">
+  <button onclick="showOrders()">Orders</button>
+  <button id="authBtn" onclick="authClick()">Login</button>
+  <button onclick="toggleCart()">Cart (<span id="count">0</span>)</button>
+</header>
+<div class="chips" id="chips"></div>
+<div class="grid" id="grid"></div>
+<aside id="cart">
+  <h2>Your Cart</h2>
+  <div id="items" style="flex:1;overflow:auto"></div>
+  <div class="total">Total: <span id="total">₹0</span></div>
+  <button onclick="checkout()">Checkout</button>
+  <button class="grey" onclick="toggleCart()">Close</button>
+</aside>
+<div id="modal" class="modal"><div class="box" id="box"></div></div>
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inr = n => '₹' + Number(n).toLocaleString('en-IN');
+let products = [], cat = 'All', cart = {}, token = null, user = null, mode = 'login';
+try {
+  cart = JSON.parse(localStorage.getItem('cart') || '{}');
+  token = localStorage.getItem('token');
+  user = localStorage.getItem('user');
+} catch (e) {}
+
+async function api(path, opts = {}) {
+  const h = {'Content-Type': 'application/json'};
+  if (token) h.Authorization = 'Bearer ' + token;
+  const r = await fetch(path, {...opts, headers: h});
+  let data = {};
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+async function load() {
+  try { products = await api('/api/products'); }
+  catch (e) { $('grid').innerHTML = '<p>Could not load products.</p>'; return; }
+  render();
+}
+
+function render() {
+  const cats = ['All', ...new Set(products.map(p => p.category))];
+  $('chips').innerHTML = cats.map(c =>
+    `<span class="chip ${c === cat ? 'active' : ''}" onclick="setCat('${esc(c)}')">${esc(c)}</span>`).join('');
+  const q = $('q').value.toLowerCase();
+  const list = products.filter(p => (cat === 'All' || p.category === cat) && p.name.toLowerCase().includes(q));
+  $('grid').innerHTML = list.map(p => `
+    <div class="card">
+      <img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy" onerror="this.onerror=null;this.removeAttribute('src')">
+      <div class="body">
+        <b>${esc(p.name)}</b>
+        <span class="muted">${esc(p.description)}</span>
+        <span class="muted">⭐ ${p.rating} · ${p.stock > 0 ? p.stock + ' in stock' : 'Out of stock'}</span>
+        <span class="price">${inr(p.price)}</span>
+        <button ${p.stock < 1 ? 'disabled' : ''} onclick="add(${p.id})">Add to cart</button>
+      </div>
+    </div>`).join('') || '<p style="padding:0 20px">No products found.</p>';
+  renderCart();
+}
+
+function add(id) { cart[id] = (cart[id] || 0) + 1; save(); toast('Added to cart'); }
+function change(id, d) { cart[id] = (cart[id] || 0) + d; if (cart[id] <= 0) delete cart[id]; save(); }
+function save() { try { localStorage.setItem('cart', JSON.stringify(cart)); } catch (e) {} renderCart(); }
+
+function renderCart() {
+  let total = 0, n = 0;
+  const html = Object.entries(cart).map(([id, qty]) => {
+    const p = products.find(x => x.id == id);
+    if (!p) return '';
+    total += p.price * qty; n += qty;
+    return `<div class="row"><span>${esc(p.name)}<br><small>${inr(p.price)}</small></span>
+      <span><button onclick="change(${id},-1)">−</button> ${qty} <button onclick="change(${id},1)">+</button></span></div>`;
+  }).join('');
+  $('items').innerHTML = html || '<p class="muted">Cart is empty</p>';
+  $('total').textContent = inr(total);
+  $('count').textContent = n;
+}
+
+function toggleCart() { $('cart').classList.toggle('open'); }
+function setCat(c) { cat = c; render(); }
+function closeModal() { $('modal').classList.remove('show'); }
+
+function updateAuth() { $('authBtn').textContent = token ? 'Logout (' + user + ')' : 'Login'; }
+function authClick() { token ? logout() : openAuth(); }
+function logout() {
+  token = null; user = null;
+  try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch (e) {}
+  updateAuth();
+}
+
+function openAuth() { mode = 'login'; drawAuth(); $('modal').classList.add('show'); }
+function drawAuth() {
+  const login = mode === 'login';
+  $('box').innerHTML = `<h2>${login ? 'Login' : 'Create account'}</h2>
+    ${login ? '' : '<input id="aname" placeholder="Full name">'}
+    <input id="aemail" placeholder="Email">
+    <input id="apass" type="password" placeholder="Password (min 6 chars)">
+    <p id="aerr" class="err"></p>
+    <button onclick="submitAuth()">${login ? 'Login' : 'Register'}</button>
+    <p class="muted" style="cursor:pointer" onclick="mode = mode === 'login' ? 'register' : 'login'; drawAuth()">
+      ${login ? 'New here? Create an account' : 'Already have an account? Login'}</p>
+    <button class="grey" onclick="closeModal()">Close</button>`;
+}
+async function submitAuth() {
+  try {
+    const body = {email: $('aemail').value, password: $('apass').value};
+    if (mode === 'register') body.name = $('aname').value;
+    const d = await api(mode === 'login' ? '/api/login' : '/api/register', {method: 'POST', body: JSON.stringify(body)});
+    token = d.token; user = d.name;
+    try { localStorage.setItem('token', token); localStorage.setItem('user', user); } catch (e) {}
+    closeModal(); updateAuth(); toast('Welcome, ' + user);
+  } catch (e) { $('aerr').textContent = e.message; }
+}
+
+async function checkout() {
+  if (!Object.keys(cart).length) return toast('Cart is empty');
+  if (!token) return openAuth();
+  try {
+    const items = Object.entries(cart).map(([id, q]) => ({product_id: +id, qty: q}));
+    const o = await api('/api/orders', {method: 'POST', body: JSON.stringify({items})});
+    cart = {}; save(); toggleCart();
+    toast('Order #' + o.id + ' placed! Total ' + inr(o.total));
+    load();
+  } catch (e) {
+    if (e.message === 'login required') { logout(); openAuth(); } else toast(e.message);
+  }
+}
+
+async function showOrders() {
+  if (!token) return openAuth();
+  try {
+    const os = await api('/api/orders');
+    $('box').innerHTML = '<h2>My Orders</h2>' + (os.map(o => `
+      <div class="row" style="display:block"><b>Order #${o.id}</b> · ${esc(o.status)} · ${esc(o.created_at)}<br>
+      ${o.items.map(i => esc(i.name) + ' × ' + i.qty).join(', ')}<br><b>${inr(o.total)}</b></div>`).join('')
+      || '<p class="muted">No orders yet</p>') + '<button class="grey" onclick="closeModal()">Close</button>';
+    $('modal').classList.add('show');
+  } catch (e) { logout(); openAuth(); }
+}
+
+$('q').addEventListener('input', render);
+updateAuth();
+load();
+</script>
+</body>
+</html>
