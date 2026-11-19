@@ -36,8 +36,11 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_KEY')]) {
                     sh '''
+                        mkdir -p odc-report /var/jenkins_home/odc-data
+                        SITE=$(ls -d services/product-service/venv/lib/python3*/site-packages)
                         /opt/dependency-check/bin/dependency-check.sh \
                           --project ShopKart \
+                          --scan "$SITE" \
                           --scan services/product-service/requirements.txt \
                           --enableExperimental \
                           --format HTML --format JSON \
