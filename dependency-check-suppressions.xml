@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+  <suppress>
+    <notes>Python library prometheus-flask-exporter is not the Prometheus server. CPE false positive.</notes>
+    <packageUrl regex="true">^pkg:pypi/prometheus[-_]flask[-_]exporter@.*$</packageUrl>
+    <cpe>cpe:/a:prometheus:prometheus</cpe>
+  </suppress>
+  <suppress>
+    <notes>Python library prometheus_client is not the Prometheus server. CPE false positive.</notes>
+    <packageUrl regex="true">^pkg:pypi/prometheus[-_]client@.*$</packageUrl>
+    <cpe>cpe:/a:prometheus:prometheus</cpe>
+  </suppress>
+</suppressions>

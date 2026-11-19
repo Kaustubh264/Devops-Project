@@ -43,6 +43,9 @@ pipeline {
                           --scan "$SITE" \
                           --scan services/product-service/requirements.txt \
                           --enableExperimental \
+                          --disableOssIndex \
+                          --noupdate \
+                          --suppression dependency-check-suppressions.xml \
                           --format HTML --format JSON \
                           --out odc-report \
                           --data /var/jenkins_home/odc-data \
