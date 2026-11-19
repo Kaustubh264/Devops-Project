@@ -31,6 +31,30 @@ pipeline {
             }
         }
 
+        stage('OWASP Dependency-Check') {
+            options { timeout(time: 60, unit: 'MINUTES') }
+            steps {
+                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_KEY')]) {
+                    sh '''
+                        /opt/dependency-check/bin/dependency-check.sh \
+                          --project ShopKart \
+                          --scan services/product-service/requirements.txt \
+                          --enableExperimental \
+                          --format HTML --format JSON \
+                          --out odc-report \
+                          --data /var/jenkins_home/odc-data \
+                          --nvdApiKey "$NVD_KEY" \
+                          --failOnCVSS 9
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'odc-report/**', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Build Image') {
             steps {
                 sh 'docker build -t ${IMAGE}:${BUILD_NUMBER} services/product-service'
