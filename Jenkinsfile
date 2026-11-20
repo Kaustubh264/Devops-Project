@@ -66,6 +66,21 @@ pipeline {
                 sh 'docker build -t ${IMAGE}:${BUILD_NUMBER} services/product-service'
             }
         }
+
+        stage('Push Image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
+                    sh '''
+                        echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+                        docker tag ${IMAGE}:${BUILD_NUMBER} $DH_USER/${IMAGE}:${BUILD_NUMBER}
+                        docker tag ${IMAGE}:${BUILD_NUMBER} $DH_USER/${IMAGE}:latest
+                        docker push $DH_USER/${IMAGE}:${BUILD_NUMBER}
+                        docker push $DH_USER/${IMAGE}:latest
+                        docker logout
+                    '''
+                }
+            }
+        }
     }
 
     post {
